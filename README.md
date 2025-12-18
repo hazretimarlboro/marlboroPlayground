@@ -1,9 +1,7 @@
-Absolutely! Here’s a full **README.md** draft for your project, tailored to your MiniFS shell:
-
 ````markdown
-# MiniFS
+# marlboroPlayground
 
-**MiniFS** is a lightweight, in-memory file system simulator written in C. It allows you to create directories and files, navigate the file system, and manage content safely, all without touching your real file system. Perfect for learning file system concepts or testing basic shell commands in a controlled environment.
+**marlboroPlayground** is a lightweight, in-memory file system simulator written in C. It allows you to create directories and files, navigate the file system, and manage content safely, all without touching your real file system. Perfect for learning file system concepts or testing basic shell commands in a controlled environment.
 
 ---
 
@@ -36,13 +34,13 @@ Absolutely! Here’s a full **README.md** draft for your project, tailored to yo
 1. Compile the program:
 
 ```bash
-gcc -o minifs main.c
+gcc -o marlboroPlayground main.c
 ````
 
 2. Run the shell:
 
 ```bash
-./minifs
+./marlboroPlayground
 ```
 
 3. Interact with your in-memory file system:
@@ -52,7 +50,7 @@ $ mkdir projects
 $ cd projects
 $ touch readme.txt
 $ ls
--file.txt
+-readme.txt
 $ cd ..
 $ rm projects
 Are you sure you want to delete projects? (yes/no): yes
@@ -74,10 +72,4 @@ Are you sure you want to delete projects? (yes/no): yes
 This project is open-source and free to use under the MIT License.
 
 ```
-
----
-
-If you want, I can also **make it more visually appealing for GitHub** with some **ASCII art at the top**, syntax-highlighted examples, and tips for quickly testing it. That usually makes a README pop!  
-
-Do you want me to do that next?
 ```

@@ -26,6 +26,9 @@
 | `touch NAME` | Create a new empty file with the given `NAME`. |
 | `cd NAME`    | Change the current directory to `NAME`. Use `..` to go up one level. Absolute paths starting with `/` are supported. |
 | `rm NAME`    | Remove the file or directory named `NAME`. Prompts for confirmation (`yes` or `no`). Cannot remove the current working directory or root. |
+| `insert NAME`| Insert text into file |
+| `print! NAME`| Print the content of the file |
+| `exit`       | Exit the terminal |
 
 ---
 

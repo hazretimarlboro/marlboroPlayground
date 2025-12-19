@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+#define _NODE_SIZE 80
 
 typedef enum 
 {
@@ -12,7 +15,8 @@ typedef enum
     _PERMISSION_DENIED,
     _OBJECT_ALREADY_EXISTS,
     _ILLEGAL_CHARACTER,
-    _TOO_LONG
+    _TOO_LONG,
+    _NOT_A_FILE
 } error_t;
 
 //set up the file system
@@ -31,7 +35,7 @@ typedef struct node
 
     node_types type;
     size_t size;
-    __uint8_t* data;
+    uint8_t* data;
 } node;
 
 node* _root;
@@ -40,7 +44,7 @@ node* _curr_dir;
 size_t _get_size(node* nd)
 {
     if(!nd) return 0;
-    size_t NODESIZE = sizeof(node);
+    size_t NODESIZE = _NODE_SIZE;
     node* cur = nd->children;
     
     if(nd->data) NODESIZE += nd->size;
@@ -236,6 +240,60 @@ int _touch(node* cwd, char* name)
 
     node* new_file = _create_node(name, _FILE);
     _add_child(cwd,new_file);
+    return _OK;
+}
+
+int _xedit(char* name,node* cwd)
+{
+    node* file;
+
+    if(!name) return _INVALID_ARGUMENTS;
+
+    if(strchr(name,'/'))
+    {
+        file = _node_from_path(name);
+        if(!file)
+            return _NOT_FOUND;
+    }
+    else
+    {
+        file = _find_child(name, cwd);
+        if(!file)
+            return _NOT_FOUND;
+        if(file->type != _FILE)
+            return _NOT_A_FILE;
+    }
+
+    return _OK;
+}
+
+int _insert(char* content, char* name, node* cwd)
+{
+    node* file = _find_child(name,cwd);
+
+    if(!name) return _INVALID_ARGUMENTS;
+    if(!content) return _INVALID_ARGUMENTS;
+    if(!file) return _NOT_FOUND;
+    if(strlen(content) > 1023) return _TOO_LONG;
+    if(file->type != _FILE) return _NOT_A_FILE;
+    
+    file->data = (uint8_t*) content;
+    file->size = 0;
+    file->size = strlen(content)+ _get_size(file);
+
+    return _OK;
+
+}
+
+int _print(node* cwd, char* name)
+{
+    node* file = _find_child(name,cwd);
+
+    if(!name) return _INVALID_ARGUMENTS;
+    if(!file) return _NOT_FOUND;
+    if(file->type != _FILE) return _NOT_A_FILE;
+
+    printf("%s", file->data);
     return _OK;
 }
 
@@ -474,6 +532,27 @@ int _exec(char** splt,int i, node* cwd)
         if(i > 1) return _INVALID_ARGUMENTS;
         exit(_OK);
     }
+    else if(strcmp(splt[0], "insert")==0)
+    {
+        if(i < 3) return _INVALID_ARGUMENTS;
+        char* name = splt[1];
+        char buffer[1024];//
+        
+        for(int v=2; v< i;++v)
+        {
+            sprintf(buffer,"%s", splt[v]);
+            // strncat(buffer,splt[v], sizeof(buffer) - strlen(buffer) -
+            // 1 );
+        }
+        buffer[strlen(buffer)] = '\0';
+        return _insert(buffer,name,cwd);
+    }
+    else if(strcmp(splt[0], "print!") == 0)
+    {
+        if(i != 2) return _INVALID_ARGUMENTS;
+        char* name = splt[1];
+        return _print(cwd,name);
+    }
     else
     {
         return _COMMAND_NOT_FOUND;
@@ -534,7 +613,10 @@ int main()
                 printf("Not a directory!\n");
                 break;
             case _TOO_LONG:
-                printf("The name is too long!\n");
+                printf("The name/content is too long!\n");
+                break;
+            case _NOT_A_FILE:
+                printf("Not a file!\n");
                 break;
         }
 

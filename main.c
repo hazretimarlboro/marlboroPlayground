@@ -280,7 +280,12 @@ int _insert(char* content, char* name, node* cwd)
     file->data = (uint8_t*) content;
     file->size = 0;
     file->size = strlen(content)+ _get_size(file);
-    cwd->size += file->size;
+    node* cur = file->parent;
+    while(cur)
+    {
+        cur->size += file->size;
+        cur = cur->parent;
+    }
 
     return _OK;
 

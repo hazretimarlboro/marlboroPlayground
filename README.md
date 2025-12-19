@@ -29,6 +29,7 @@
 | `insert NAME`| Insert text into file |
 | `print! NAME`| Print the content of the file |
 | `exit`       | Exit the terminal |
+| `clear`      | Clear the screen |
 
 ---
 

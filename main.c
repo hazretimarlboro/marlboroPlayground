@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-
 typedef enum {
     _OK,
     _COMMAND_NOT_FOUND,
@@ -11,7 +10,8 @@ typedef enum {
     _NOT_FOUND,
     _PERMISSION_DENIED,
     _OBJECT_ALREADY_EXISTS,
-    _ILLEGAL_CHARACTER
+    _ILLEGAL_CHARACTER,
+    _TOO_LONG
 } error_t;
 
 //set up the file system
@@ -20,19 +20,16 @@ typedef enum {
     _FILE
 } node_types;
 
-
 typedef struct node{
     char name[32];
-
-    node_types type;
     struct node* sibling;
     struct node* parent;
     struct node* children;
 
+    node_types type;
     size_t size;
     __uint8_t* data;
 } node;
-
 
 node* _root;
 node* _curr_dir;
@@ -190,7 +187,11 @@ char* _get_absolute_path(node* cwd)
 }
 
 //commands
-
+int _clear()
+{
+    printf("\x1b[2J\x1b[H");
+    return _OK;
+}
 
 int _ls(node* cwd)
 {
@@ -199,11 +200,11 @@ int _ls(node* cwd)
     {
         if(cur->type == _DIR)
         {
-            printf(">%s\n",cur->name);
+            printf(">%s    (Size:%d)\n",cur->name,cur->size);
         }
         else
         {
-            printf("-%s\n",cur->name);
+            printf("-%s    (Size:%d)\n",cur->name,cur->size);
         }
         cur = cur->sibling;
     }
@@ -212,6 +213,11 @@ int _ls(node* cwd)
 
 int _touch(node* cwd, char* name)
 {
+    if(strlen(name) >= 32)
+    {
+        return _TOO_LONG;
+    }
+
     node* cur =cwd->children;
     if (name[0] == '\0' || strcmp(name,".")==0 || strcmp(name,"..")==0) 
     return _ILLEGAL_CHARACTER;
@@ -239,6 +245,11 @@ int _touch(node* cwd, char* name)
 
 int _mkdir(node* cwd, char* name)
 {
+    if(strlen(name) >= 32)
+    {
+        return _TOO_LONG;
+    }
+
     node* cur = cwd->children;
 
     if (name[0] == '\0' || strcmp(name,".")==0 || strcmp(name,"..")==0) 
@@ -366,7 +377,6 @@ int _rm(node* cwd, char* name)
     return _NOT_FOUND;
 }
 
-
 int _cd(node* cwd, char* name)
 {
 
@@ -458,13 +468,16 @@ int _exec(char** splt,int i, node* cwd)
         }
         return _touch(cwd,splt[1]);
     }
+    else if(strcmp(splt[0],"clear")==0)
+    {
+        if(i > 1) return _INVALID_ARGUMENTS;
+        return _clear();
+    }
     else
     {
         return _COMMAND_NOT_FOUND;
     }
 }
-
-
 
 int main()
 {
@@ -498,29 +511,30 @@ int main()
         
         int argc = i;
         int STATUS = _exec(splitted_code,argc,_curr_dir);
-        if(STATUS == _COMMAND_NOT_FOUND)
+        
+        switch (STATUS)
         {
-            printf("Sorry, your command is invalid!\n");
-        }
-        else if(STATUS == _INVALID_ARGUMENTS)
-        {
-            printf("Sorry, your arguments are invalid!\n");
-        }
-        else if(STATUS == _ILLEGAL_CHARACTER)
-        {
-            printf("Your statement includes illegal characters!\n");
-        }
-        else if(STATUS == _NOT_FOUND)
-        {
-            printf("File/Directory could not be found!\n");
-        }
-        else if(STATUS == _OBJECT_ALREADY_EXISTS)
-        {
-            printf("File/Directory already exists!\n");
-        }
-        else if(STATUS == _NOT_A_DIRECTORY)
-        {
-            printf("Not a directory!\n");
+            case _COMMAND_NOT_FOUND:
+                printf("Sorry, your command is invalid!\n");
+                break;
+            case _INVALID_ARGUMENTS:
+                printf("Sorry, your arguments are invalid!\n");
+                break;
+            case _ILLEGAL_CHARACTER:
+                printf("Your statement includes illegal characters!\n");
+                break;
+            case _NOT_FOUND:
+                printf("File/Directory could not be found!\n");
+                break;
+            case _OBJECT_ALREADY_EXISTS:
+                printf("File/Directory already exists!\n");
+                break;
+            case _NOT_A_DIRECTORY:
+                printf("Not a directory!\n");
+                break;
+            case _TOO_LONG:
+                printf("The name is too long!\n");
+                break;
         }
 
         splitted_code[i] = NULL;

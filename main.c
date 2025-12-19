@@ -469,6 +469,11 @@ int _exec(char** splt,int i, node* cwd)
         if(i > 1) return _INVALID_ARGUMENTS;
         return _clear();
     }
+    else if(strcmp(splt[0],"exit")==0)
+    {
+        if(i > 1) return _INVALID_ARGUMENTS;
+        exit(_OK);
+    }
     else
     {
         return _COMMAND_NOT_FOUND;

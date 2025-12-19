@@ -3,8 +3,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-#define _NODE_SIZE 80
-
 typedef enum 
 {
     _OK,
@@ -44,7 +42,7 @@ node* _curr_dir;
 size_t _get_size(node* nd)
 {
     if(!nd) return 0;
-    size_t NODESIZE = _NODE_SIZE;
+    size_t NODESIZE = 0;
     node* cur = nd->children;
     
     if(nd->data) NODESIZE += nd->size;
@@ -97,9 +95,13 @@ node* _find_child(char* name, node* parent)
 
 node* _node_from_path(char* path)
 {
+
     if (path == NULL || path[0] == '\0')
         return NULL;
 
+    if (strcmp(path,"/")==0) return _root;
+
+    char *save_pointer;
     node* cur;
 
     if(path[0] == '/')
@@ -113,7 +115,7 @@ node* _node_from_path(char* path)
 
     char* del = "/";
 
-    char* token = strtok(path_copy,del);
+    char* token = strtok_r(path_copy,del,&save_pointer);
     while(token)
     {
         cur = _find_child(token,cur);
@@ -122,7 +124,7 @@ node* _node_from_path(char* path)
             free(path_copy);
             return NULL;
         }
-        token = strtok(NULL,del);
+        token = strtok_r(NULL,del,&save_pointer);
     }
     
     free(path_copy);
@@ -156,7 +158,8 @@ char* _get_absolute_path(node* cwd)
     int depth = 0;
 
     const node* cur = cwd;
-    while (cur && depth < MAX_DEPTH) {
+    while (cur && depth < MAX_DEPTH) 
+    {
         stack[depth++] = cur;
         cur = cur->parent;
     }
@@ -164,7 +167,8 @@ char* _get_absolute_path(node* cwd)
     if (depth >= MAX_DEPTH) return NULL;
 
     int total_len = 1; 
-    for (int i = depth - 1; i >= 0; i--) {
+    for (int i = depth - 1; i >= 0; i--) 
+    {
         total_len += strlen(stack[i]->name) + 1; 
     }
 
@@ -173,7 +177,8 @@ char* _get_absolute_path(node* cwd)
 
     path[0] = '\0';
 
-    for (int i = depth - 1; i >= 0; i--) {
+    for (int i = depth - 1; i >= 0; i--) 
+    {
         strcat(path, "/");
     
         if (i != depth - 1 || strcmp(stack[i]->name, "/") != 0)
@@ -199,11 +204,11 @@ int _ls(node* cwd)
     {
         if(cur->type == _DIR)
         {
-            printf(">%s    (Size:%d)\n",cur->name,cur->size);
+            printf(">%s    (Size:%zu)\n",cur->name,cur->size);
         }
         else
         {
-            printf("-%s    (Size:%d)\n",cur->name,cur->size);
+            printf("-%s    (Size:%zu)\n",cur->name,cur->size);
         }
         cur = cur->sibling;
     }
@@ -220,7 +225,8 @@ int _touch(node* cwd, char* name)
     node* cur =cwd->children;
     if (name[0] == '\0' || strcmp(name,".")==0 || strcmp(name,"..")==0) 
     return _ILLEGAL_CHARACTER;
-    for (int i = 0; name[i]; i++) {
+    for (int i = 0; name[i]; i++) 
+    {
         char c = name[i];
         if (!((c >= 'a' && c <= 'z') ||
               (c >= 'A' && c <= 'Z') ||
@@ -243,30 +249,6 @@ int _touch(node* cwd, char* name)
     return _OK;
 }
 
-int _xedit(char* name,node* cwd)
-{
-    node* file;
-
-    if(!name) return _INVALID_ARGUMENTS;
-
-    if(strchr(name,'/'))
-    {
-        file = _node_from_path(name);
-        if(!file)
-            return _NOT_FOUND;
-    }
-    else
-    {
-        file = _find_child(name, cwd);
-        if(!file)
-            return _NOT_FOUND;
-        if(file->type != _FILE)
-            return _NOT_A_FILE;
-    }
-
-    return _OK;
-}
-
 int _insert(char* content, char* name, node* cwd)
 {
     node* file = _find_child(name,cwd);
@@ -277,13 +259,17 @@ int _insert(char* content, char* name, node* cwd)
     if(strlen(content) > 1023) return _TOO_LONG;
     if(file->type != _FILE) return _NOT_A_FILE;
     
-    file->data = (uint8_t*) content;
-    file->size = 0;
-    file->size = strlen(content)+ _get_size(file);
+    size_t old_size = file->size;
+    free(file->data);
+    file->data = malloc(strlen(content)+ 1);
+    strcpy((char*) file->data,content);
+    file->size = strlen(content);
+    size_t delta = file->size - old_size;
+
     node* cur = file->parent;
     while(cur)
     {
-        cur->size += file->size;
+        cur->size += delta;
         cur = cur->parent;
     }
 
@@ -299,7 +285,8 @@ int _print(node* cwd, char* name)
     if(!file) return _NOT_FOUND;
     if(file->type != _FILE) return _NOT_A_FILE;
 
-    printf("%s", file->data);
+    if(file->data)
+        printf("%s", file->data);
     return _OK;
 }
 
@@ -321,7 +308,8 @@ int _mkdir(node* cwd, char* name)
         cur = cur->sibling;
     }
 
-    for (int i = 0; name[i]; i++) {
+    for (int i = 0; name[i]; i++) 
+    {
         char c = name[i];
         if (!((c >= 'a' && c <= 'z') ||
               (c >= 'A' && c <= 'Z') ||
@@ -341,7 +329,8 @@ int _mkdir(node* cwd, char* name)
 
 int _rm_by_path(char* path)
 {
-    if (!path || strcmp(path, "/") == 0) {
+    if (!path || strcmp(path, "/") == 0) 
+    {
         printf("Cannot delete root!\n");
         return _INVALID_ARGUMENTS;
     }
@@ -350,7 +339,8 @@ int _rm_by_path(char* path)
     if (!parent_path) return _INVALID_ARGUMENTS;
 
     char* node_name = strrchr(parent_path, '/');
-    if (!node_name) {
+    if (!node_name) 
+    {
         free(parent_path);
         return _NOT_FOUND;
     }
@@ -359,16 +349,20 @@ int _rm_by_path(char* path)
     node_name++;
 
     node* parent = (strlen(parent_path) == 0) ? _root : _node_from_path(parent_path);
-    if (!parent) {
+    if (!parent) 
+    {
         free(parent_path);
         return _NOT_FOUND;
     }
 
     node* prev = NULL;
     node* cur = parent->children;
-    while (cur) {
-        if (strcmp(cur->name, node_name) == 0) {
-            if (cur == _curr_dir) {
+    while (cur) 
+    {
+        if (strcmp(cur->name, node_name) == 0) 
+        {
+            if (cur == _curr_dir) 
+            {
                 printf("Cannot delete current working directory!\n");
                 free(parent_path);
                 return _INVALID_ARGUMENTS;
@@ -378,7 +372,14 @@ int _rm_by_path(char* path)
                 prev->sibling = cur->sibling;
             else
                 parent->children = cur->sibling;
-
+    
+            size_t delta = cur->size;
+            node* par = _node_from_path(path)->parent;
+            while(par)
+            {
+                par->size -= delta;
+                par = par->parent;
+            }
             _free_node(cur);
             free(parent_path);
             return _OK;
@@ -408,16 +409,20 @@ int _rm(node* cwd, char* name)
     if (strcmp(choice, "yes") != 0) return _INVALID_ARGUMENTS;
 
     
-    if (strchr(name, '/')) {
+    if (strchr(name, '/')) 
+    {
         return _rm_by_path(name);
     }
 
     
     node* prev = NULL;
     node* cur = cwd->children;
-    while (cur) {
-        if (strcmp(cur->name, name) == 0) {
-            if (cur == _curr_dir) {
+    while (cur) 
+    {
+        if (strcmp(cur->name, name) == 0) 
+        {
+            if (cur == _curr_dir) 
+            {
                 printf("Cannot delete current working directory!\n");
                 return _INVALID_ARGUMENTS;
             }
@@ -427,7 +432,18 @@ int _rm(node* cwd, char* name)
             else
                 cwd->children = cur->sibling;
 
+            size_t delta = _get_size(cur);
             _free_node(cur);
+            
+            if(cwd == _root) return _OK;
+
+            node* par = cwd;
+            while(par)
+            {
+                par->size -= delta;
+                par = par->parent;
+            }
+            
             return _OK;
         }
         prev = cur;
@@ -454,7 +470,7 @@ int _cd(node* cwd, char* name)
     {
         if(strcmp(_curr_dir->name,"/")==0)
         {
-            return _NOT_FOUND;
+            return _OK;
         }
         else
         {
@@ -536,19 +552,23 @@ int _exec(char** splt,int i, node* cwd)
     else if(strcmp(splt[0],"exit")==0)
     {
         if(i > 1) return _INVALID_ARGUMENTS;
+        _free_node(_root);
         exit(_OK);
     }
     else if(strcmp(splt[0], "insert")==0)
     {
         if(i < 3) return _INVALID_ARGUMENTS;
         char* name = splt[1];
-        char buffer[1024];//
+        char buffer[1024];
         
+        buffer[0] = '\0';
         for(int v=2; v< i;++v)
         {
-            sprintf(buffer,"%s", splt[v]);
-            // strncat(buffer,splt[v], sizeof(buffer) - strlen(buffer) -
-            // 1 );
+            strncat(buffer, splt[v], sizeof(buffer)- strlen(buffer) -1);
+            if(v < i-1)
+            {
+                strncat(buffer," ",sizeof(buffer) - strlen(buffer) -1);
+            }
         }
         buffer[strlen(buffer)] = '\0';
         return _insert(buffer,name,cwd);

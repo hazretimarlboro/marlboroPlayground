@@ -2,7 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-typedef enum {
+typedef enum 
+{
     _OK,
     _COMMAND_NOT_FOUND,
     _INVALID_ARGUMENTS,
@@ -15,12 +16,14 @@ typedef enum {
 } error_t;
 
 //set up the file system
-typedef enum {
+typedef enum 
+{
     _DIR,
     _FILE
 } node_types;
 
-typedef struct node{
+typedef struct node
+{
     char name[32];
     struct node* sibling;
     struct node* parent;
@@ -126,7 +129,6 @@ void _free_node(node* n)
 {
     if (!n) return;
 
-    // Free all children recursively
     node* child = n->children;
     while (child)
     {
@@ -135,10 +137,8 @@ void _free_node(node* n)
         child = next_sibling;
     }
 
-    // Free node's data if used (you have __uint8_t* data in struct)
     if (n->data) free(n->data);
 
-    // Free the node itself
     free(n);
 }
 
@@ -147,11 +147,9 @@ char* _get_absolute_path(node* cwd)
 {
     if (!cwd) return NULL;
 
-
     const int MAX_DEPTH = 512;
     const node* stack[MAX_DEPTH];
     int depth = 0;
-
 
     const node* cur = cwd;
     while (cur && depth < MAX_DEPTH) {
@@ -161,7 +159,6 @@ char* _get_absolute_path(node* cwd)
 
     if (depth >= MAX_DEPTH) return NULL;
 
-    
     int total_len = 1; 
     for (int i = depth - 1; i >= 0; i--) {
         total_len += strlen(stack[i]->name) + 1; 
@@ -172,15 +169,13 @@ char* _get_absolute_path(node* cwd)
 
     path[0] = '\0';
 
-    
     for (int i = depth - 1; i >= 0; i--) {
         strcat(path, "/");
-        
+    
         if (i != depth - 1 || strcmp(stack[i]->name, "/") != 0)
             strcat(path, stack[i]->name);
     }
 
-    
     if (strcmp(path, "") == 0) strcpy(path, "/");
 
     return path;
@@ -231,6 +226,7 @@ int _touch(node* cwd, char* name)
                 return _ILLEGAL_CHARACTER;
             }
     }
+    
     while(cur)
     {
         if(strcmp(cur->name,name)==0) return _OBJECT_ALREADY_EXISTS;

@@ -280,6 +280,7 @@ int _insert(char* content, char* name, node* cwd)
     file->data = (uint8_t*) content;
     file->size = 0;
     file->size = strlen(content)+ _get_size(file);
+    cwd->size += file->size;
 
     return _OK;
 

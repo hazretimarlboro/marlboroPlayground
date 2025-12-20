@@ -43,7 +43,7 @@ Think of it as a tiny sandboxed operating system for experimenting with file man
 /$ mkdir documents
 /$ cd documents
 /documents$ touch notes.txt
-/documents$ insert notes.txt "This is my first note"
+/documents$ insert > notes.txt "This is my first note"
 /documents$ print! notes.txt
 This is my first note
 /documents$ ls

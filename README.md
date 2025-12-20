@@ -21,9 +21,10 @@ Think of it as a tiny sandboxed operating system for experimenting with file man
   - `print! <fileName>` — View the content of a file.
 
 - **Deletion**
-  - `rm <file/dirName>` — Delete a file or directory (with confirmation).
+  - `rm [-f] <file/dirName>` — Delete a file or directory (with confirmation).
   - Works with **absolute** (`/path/to/file`) or **relative** paths.
   - Cannot delete the **current working directory** or **root**.
+  - You can skip confirmation if you add -f before directory name
 
 - **Extras**
   - `clear` — Clear the terminal.

@@ -392,21 +392,24 @@ int _rm_by_path(char* path)
     return _NOT_FOUND;
 }
 
-int _rm(node* cwd, char* name)
+int _rm(node* cwd, char* name,int conf)
 {
-    char choice[10];
-    printf("Are you sure you want to delete %s? (yes/no): ", name);
-    if (!fgets(choice, sizeof(choice), stdin)) return _INVALID_ARGUMENTS;
+    if(!conf)
+    {
+        char choice[10];
+        printf("Are you sure you want to delete %s? (yes/no): ", name);
+        if (!fgets(choice, sizeof(choice), stdin)) return _INVALID_ARGUMENTS;
 
     
-    choice[strcspn(choice, "\n")] = '\0';
+        choice[strcspn(choice, "\n")] = '\0';
 
     
-    int c;
-    while ((c = getchar()) != '\n' && c != EOF);
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF);
 
-    if (strcmp(choice, "no") == 0) return _OK;
-    if (strcmp(choice, "yes") != 0) return _INVALID_ARGUMENTS;
+        if (strcmp(choice, "no") == 0) return _OK;
+        if (strcmp(choice, "yes") != 0) return _INVALID_ARGUMENTS;
+    }
 
     
     if (strchr(name, '/')) 
@@ -528,12 +531,25 @@ int _exec(char** splt,int i, node* cwd)
     }
     else if(strcmp(splt[0],"rm")==0)
     {
-        if(i != 2)
+        int m = 0;
+        char* target_name = NULL;
+
+        if (i == 3 && strcmp(splt[1], "-f") == 0)
         {
-            printf("Bad Usage! The right way is: rm dir/fileName\n");
+            m = 1;
+            target_name = splt[2];
+        } 
+        else if (i == 2)
+        {
+            target_name = splt[1];
+        }
+        else
+        {
+            printf("Bad Usage! The right way is: rm [-f] dir/fileName\n");
             return _INVALID_ARGUMENTS;
         }
-        return _rm(cwd,splt[1]);
+
+        return _rm(cwd, target_name, m);
     }
     else if(strcmp(splt[0],"touch")==0)
     {

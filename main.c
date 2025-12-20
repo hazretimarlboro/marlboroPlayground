@@ -190,6 +190,20 @@ char* _get_absolute_path(node* cwd)
     return path;
 }
 
+void _remove_first_last(char* str) {
+    size_t len = strlen(str);
+    if (len <= 2) {
+        str[0] = '\0';
+        return;
+    }
+
+    for (size_t i = 0; i < len - 1; i++) {
+        str[i] = str[i + 1];
+    }
+
+    str[len - 2] = '\0';
+}
+
 //commands
 int _clear()
 {
@@ -249,9 +263,10 @@ int _touch(node* cwd, char* name)
     return _OK;
 }
 
-int _insert(char* content, char* name, node* cwd)
+int _insert(char* content, char* name, node* cwd,char* option)
 {
     node* file = _find_child(name,cwd);
+    size_t old_size = file->data ? file->size : 0;
 
     if(!name) return _INVALID_ARGUMENTS;
     if(!content) return _INVALID_ARGUMENTS;
@@ -259,7 +274,7 @@ int _insert(char* content, char* name, node* cwd)
     if(strlen(content) > 1023) return _TOO_LONG;
     if(file->type != _FILE) return _NOT_A_FILE;
     
-    size_t old_size = file->size;
+    /* size_t old_size = file->size;
     free(file->data);
     file->data = malloc(strlen(content)+ 1);
     strcpy((char*) file->data,content);
@@ -271,6 +286,56 @@ int _insert(char* content, char* name, node* cwd)
     {
         cur->size += delta;
         cur = cur->parent;
+    } */
+
+
+    //overwrite
+    if(strcmp(option,">")==0)
+    {
+        free(file->data);
+        file->data = malloc(strlen(content) + 1);
+        strcpy((char*) file->data,content);
+        file->size = strlen(content);
+        size_t delta = file->size - old_size;
+
+        node* cur = file->parent;
+        while(cur)
+        {
+            cur->size += delta;
+            cur = cur->parent;
+        }
+        
+    }
+    //appeend
+    else if(strcmp(option,">>")==0)
+    {
+        char* old_data = file->data ? strdup((char*)file->data) : strdup("");       
+        char* new_data = malloc(old_size + strlen(content) + 1);
+        
+        new_data[0]='\0';
+        
+        strncat(new_data, old_data, sizeof(new_data)-strlen(new_data)-1);
+        strncat(new_data,content,sizeof(new_data)-strlen(new_data)-1);
+        
+        file->size = strlen(new_data);
+        
+        free(file->data);
+        
+        file->data = (uint8_t*)new_data;
+        size_t delta = file->size - old_size;
+        
+        free(old_data);
+
+        node* cur = file->parent;
+        while(cur)
+        {
+            cur->size += delta;
+            cur = cur->parent;
+        }
+    }
+    else
+    {
+        return _INVALID_ARGUMENTS;
     }
 
     return _OK;
@@ -374,7 +439,7 @@ int _rm_by_path(char* path)
                 parent->children = cur->sibling;
     
             size_t delta = cur->size;
-            node* par = _node_from_path(path)->parent;
+            node* par = parent;
             while(par)
             {
                 par->size -= delta;
@@ -573,21 +638,36 @@ int _exec(char** splt,int i, node* cwd)
     }
     else if(strcmp(splt[0], "insert")==0)
     {
-        if(i < 3) return _INVALID_ARGUMENTS;
-        char* name = splt[1];
-        char buffer[1024];
-        
-        buffer[0] = '\0';
-        for(int v=2; v< i;++v)
+        if(i < 4) 
         {
-            strncat(buffer, splt[v], sizeof(buffer)- strlen(buffer) -1);
+            printf("Bad Usage! The right way is: insert >/>> <fileName> \"<content>\"\n");
+            return _INVALID_ARGUMENTS;
+        }
+        if(splt[3][0]!='"'||splt[i-1][strlen(splt[i-1])-1]!='"')
+            return _INVALID_ARGUMENTS;
+        if(!splt[3]) return _INVALID_ARGUMENTS;
+        
+        char* name = splt[2];
+        char buffer[1024];
+        char* option = splt[1];
+        buffer[0] = '\0';
+
+        if(strlen(splt[3]) > 1022) return _TOO_LONG;
+        if(strlen(splt[3]) < 2) return _INVALID_ARGUMENTS; 
+        
+        for(int v =3; v < i; ++v)
+        {
+            strncat(buffer,splt[v],sizeof(buffer)-strlen(buffer)-1);
+
             if(v < i-1)
             {
-                strncat(buffer," ",sizeof(buffer) - strlen(buffer) -1);
+                strncat(buffer," ",sizeof(buffer)-strlen(buffer)-1);
             }
         }
         buffer[strlen(buffer)] = '\0';
-        return _insert(buffer,name,cwd);
+
+        _remove_first_last(buffer);
+        return _insert(buffer,name,cwd,option);
     }
     else if(strcmp(splt[0], "print!") == 0)
     {
@@ -605,7 +685,7 @@ int main()
 {
     init();
 
-    char command[128];
+    char command[2048];
     char* del = " ";
 
     _curr_dir = _root;
@@ -615,7 +695,7 @@ int main()
         char* abspath = _get_absolute_path(_curr_dir);
         printf("%s$", abspath);
         free(abspath);
-        fgets(command,128,stdin);
+        fgets(command,2048,stdin);
         command[strcspn(command, "\n")] = '\0';
         char* token = strtok(command,del);
         char* splitted_code[32];

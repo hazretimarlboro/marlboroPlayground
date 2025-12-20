@@ -264,13 +264,15 @@ int _touch(node* cwd, char* name)
 }
 
 int _insert(char* content, char* name, node* cwd,char* option)
-{
-    node* file = _find_child(name,cwd);
-    size_t old_size = file->data ? file->size : 0;
-
+{   
     if(!name) return _INVALID_ARGUMENTS;
     if(!content) return _INVALID_ARGUMENTS;
+    node* file = _find_child(name,cwd);
     if(!file) return _NOT_FOUND;
+    size_t old_size = file->data ? file->size : 0;
+
+    
+
     if(strlen(content) > 1023) return _TOO_LONG;
     if(file->type != _FILE) return _NOT_A_FILE;
     
@@ -307,27 +309,28 @@ int _insert(char* content, char* name, node* cwd,char* option)
         
     }
     //appeend
-    else if(strcmp(option,">>")==0)
+    else if(strcmp(option, ">>") == 0)
     {
-        char* old_data = file->data ? strdup((char*)file->data) : strdup("");       
-        char* new_data = malloc(old_size + strlen(content) + 1);
-        
-        new_data[0]='\0';
-        
-        strncat(new_data, old_data, sizeof(new_data)-strlen(new_data)-1);
-        strncat(new_data,content,sizeof(new_data)-strlen(new_data)-1);
-        
-        file->size = strlen(new_data);
-        
+        size_t content_len = strlen(content);
+        size_t new_size = old_size + content_len;
+
+        char* new_data = malloc(new_size + 1);
+        if (!new_data) return _INVALID_ARGUMENTS;
+
+        if (file->data)
+            memcpy(new_data, file->data, old_size);
+
+        memcpy(new_data + old_size, content, content_len);
+        new_data[new_size] = '\0';
+
         free(file->data);
-        
         file->data = (uint8_t*)new_data;
-        size_t delta = file->size - old_size;
-        
-        free(old_data);
+        file->size = new_size;
+
+        size_t delta = new_size - old_size;
 
         node* cur = file->parent;
-        while(cur)
+        while (cur)
         {
             cur->size += delta;
             cur = cur->parent;

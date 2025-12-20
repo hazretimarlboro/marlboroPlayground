@@ -17,7 +17,7 @@ Think of it as a tiny sandboxed operating system for experimenting with file man
 
 - **File Management**
   - `touch <fileName>` — Create an empty file.
-  - `insert <fileName> <content>` — Add or overwrite file content.
+  - `insert >/>> <fileName> <content>` — Overwrite(>) or append(>>) file content.
   - `print! <fileName>` — View the content of a file.
 
 - **Deletion**

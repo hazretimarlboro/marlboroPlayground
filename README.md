@@ -208,7 +208,7 @@ void _free_node(node* n);
 ## 🚀 Build & Run
 
 ```bash
-gcc -Wall -Wextra -O2 filesystem.c -o vfs
+gcc -Wall -Wextra -O2 main.c -o vfs
 ./vfs
 ```
 

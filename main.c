@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 typedef enum 
 {
@@ -14,7 +15,8 @@ typedef enum
     _OBJECT_ALREADY_EXISTS,
     _ILLEGAL_CHARACTER,
     _TOO_LONG,
-    _NOT_A_FILE
+    _NOT_A_FILE,
+    _WRONG_PASSWORD
 } error_t;
 
 //set up the file system
@@ -24,6 +26,12 @@ typedef enum
     _FILE
 } node_types;
 
+typedef enum 
+{
+    _CASUAL,
+    _SUPERUSER
+} users;
+
 typedef struct node
 {
     char name[32];
@@ -32,12 +40,23 @@ typedef struct node
     struct node* children;
 
     node_types type;
-    size_t size;
-    uint8_t* data;
+    size_t     size;
+    uint8_t*   data;
+    users      creator;
 } node;
 
 node* _root;
 node* _curr_dir;
+users _curr_usr = _CASUAL;
+char _curr_pass[128] = "helloworld";
+
+bool _is_allowed(node* nodeToAccess, users user)
+{
+    if(!nodeToAccess) return false;
+    if(nodeToAccess->creator == _CASUAL) return true;
+    if(nodeToAccess->creator == _SUPERUSER && user == _CASUAL) return false;
+    return true;
+}
 
 size_t _get_size(node* nd)
 {
@@ -66,12 +85,15 @@ node* _create_node(char* name, node_types type)
     cur->sibling = NULL;
     cur->size = 0;
     cur->data = NULL;
+    cur->creator = _CASUAL;
     return cur;
 }
 
 void init()
 {
     _root = _create_node("/",_DIR);
+    _root->creator = _CASUAL;
+    _curr_dir      = _root;
 }
 
 void _add_child(node* parent, node* child)
@@ -83,6 +105,7 @@ void _add_child(node* parent, node* child)
 
 node* _find_child(char* name, node* parent)
 {
+    if(!parent) return NULL;
     node* cur = parent->children;
     while(cur)
     {
@@ -148,7 +171,6 @@ void _free_node(node* n)
     free(n);
 }
 
-
 char* _get_absolute_path(node* cwd)
 {
     if (!cwd) return NULL;
@@ -179,6 +201,8 @@ char* _get_absolute_path(node* cwd)
 
     for (int i = depth - 1; i >= 0; i--) 
     {
+        if(strcmp(stack[i]->name,"/") == 0) continue;
+        
         strcat(path, "/");
     
         if (i != depth - 1 || strcmp(stack[i]->name, "/") != 0)
@@ -190,18 +214,12 @@ char* _get_absolute_path(node* cwd)
     return path;
 }
 
-void _remove_first_last(char* str) {
-    size_t len = strlen(str);
-    if (len <= 2) {
-        str[0] = '\0';
-        return;
-    }
-
-    for (size_t i = 0; i < len - 1; i++) {
-        str[i] = str[i + 1];
-    }
-
-    str[len - 2] = '\0';
+char* _parse_command_for_insert(char* command)
+{
+    int   hashtag = strcspn(command,"#");
+    char* content = &command[hashtag+1];
+    content[strlen(content)] = '\0';
+    return content;
 }
 
 //commands
@@ -214,22 +232,35 @@ int _clear()
 int _ls(node* cwd)
 {
     node* cur = cwd->children;
+    char* mode;
+
     while(cur)
     {
-        if(cur->type == _DIR)
+        if(cur->creator==_CASUAL)
         {
-            printf(">%s    (Size:%zu)\n",cur->name,cur->size);
+            mode = "Casual";
         }
         else
         {
-            printf("-%s    (Size:%zu)\n",cur->name,cur->size);
+            mode = "Superuser";
+        }
+
+        size_t size = _get_size(cur);
+
+        if(cur->type == _DIR)
+        {
+            printf(">%s    (Size:%zu) Mode:%s\n",cur->name,size,mode);
+        }
+        else
+        {
+            printf("-%s    (Size:%zu) Mode:%s\n",cur->name,size,mode);
         }
         cur = cur->sibling;
     }
     return _OK;
 }
 
-int _touch(node* cwd, char* name)
+int _touch(node* cwd, char* name,users currentuser)
 {
     if(strlen(name) >= 32)
     {
@@ -238,14 +269,15 @@ int _touch(node* cwd, char* name)
 
     node* cur =cwd->children;
     if (name[0] == '\0' || strcmp(name,".")==0 || strcmp(name,"..")==0) 
-    return _ILLEGAL_CHARACTER;
+        return _ILLEGAL_CHARACTER;
+    
     for (int i = 0; name[i]; i++) 
     {
         char c = name[i];
         if (!((c >= 'a' && c <= 'z') ||
               (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') ||
-              c == '_' || c == '-' || c == '.'))
+               c == '_' || c == '-'  || c == '.'))
             {
                 return _ILLEGAL_CHARACTER;
             }
@@ -259,38 +291,84 @@ int _touch(node* cwd, char* name)
     }
 
     node* new_file = _create_node(name, _FILE);
+    if(_is_allowed(cwd,_curr_usr) == false) 
+    {
+        _free_node(new_file);
+        return _PERMISSION_DENIED;
+        
+    }
+    new_file->creator = currentuser;
     _add_child(cwd,new_file);
     return _OK;
 }
 
-int _insert(char* content, char* name, node* cwd,char* option)
-{   
-    if(!name) return _INVALID_ARGUMENTS;
-    if(!content) return _INVALID_ARGUMENTS;
-    node* file = _find_child(name,cwd);
-    if(!file) return _NOT_FOUND;
-    size_t old_size = file->data ? file->size : 0;
+int _move(char* source, char* destination, node* cwd)
+{
+    if(!source || !destination) return _INVALID_ARGUMENTS;
 
-    
+    node* SourceNode = strchr(source,'/') ? _node_from_path(source) : _find_child(source,cwd);
+    node* TargetDestination = strchr(destination,'/') ? _node_from_path(destination) : _find_child(destination,cwd);
+
+    if(!SourceNode) return _NOT_FOUND;
+    if(!TargetDestination) return _NOT_FOUND;
+    if(TargetDestination->type != _DIR) return _NOT_A_DIRECTORY;
+
+    node* oldParent = SourceNode->parent;
+    if(!oldParent) return _INVALID_ARGUMENTS; 
+
+    if(oldParent->children == SourceNode) 
+    {
+        oldParent->children = SourceNode->sibling;
+    }
+    else 
+    {
+        node* cur = oldParent->children;
+        while(cur && cur->sibling != SourceNode)
+        {
+            cur = cur->sibling;
+        }
+        if(!cur) return _NOT_FOUND;
+        cur->sibling = SourceNode->sibling;
+    }
+
+    node* childNewParent = TargetDestination->children;
+    while(childNewParent)
+    {
+        if(strcmp(childNewParent->name,SourceNode->name)==0)
+        {
+            printf("There is a file there with the same name!\n");
+            return _OBJECT_ALREADY_EXISTS;
+        }
+        
+        childNewParent = childNewParent->sibling;
+    }
+
+    SourceNode->parent = TargetDestination;
+    SourceNode->sibling = TargetDestination->children;
+    TargetDestination->children = SourceNode;
+
+    return _OK;
+}
+
+int _insert(char* content, char* name, node* cwd,char* option,users current)
+{
+    if(!name)    return _INVALID_ARGUMENTS;
+    if(!content) return _INVALID_ARGUMENTS;
+    if(!option)  return _INVALID_ARGUMENTS;
+
+    node* file = _find_child(name,cwd);
+    if(!file)    return _NOT_FOUND;
+
+    if(!_is_allowed(file,current))
+    {
+        return _PERMISSION_DENIED;
+    }
+
+    size_t old_size = file->data ? _get_size(file) : 0;
 
     if(strlen(content) > 1023) return _TOO_LONG;
     if(file->type != _FILE) return _NOT_A_FILE;
     
-    /* size_t old_size = file->size;
-    free(file->data);
-    file->data = malloc(strlen(content)+ 1);
-    strcpy((char*) file->data,content);
-    file->size = strlen(content);
-    size_t delta = file->size - old_size;
-
-    node* cur = file->parent;
-    while(cur)
-    {
-        cur->size += delta;
-        cur = cur->parent;
-    } */
-
-
     //overwrite
     if(strcmp(option,">")==0)
     {
@@ -298,7 +376,7 @@ int _insert(char* content, char* name, node* cwd,char* option)
         file->data = malloc(strlen(content) + 1);
         strcpy((char*) file->data,content);
         file->size = strlen(content);
-        size_t delta = file->size - old_size;
+        size_t delta = _get_size(file) - old_size;
 
         node* cur = file->parent;
         while(cur)
@@ -308,7 +386,7 @@ int _insert(char* content, char* name, node* cwd,char* option)
         }
         
     }
-    //appeend
+    //append
     else if(strcmp(option, ">>") == 0)
     {
         size_t content_len = strlen(content);
@@ -342,15 +420,19 @@ int _insert(char* content, char* name, node* cwd,char* option)
     }
 
     return _OK;
-
 }
 
-int _print(node* cwd, char* name)
+int _print(node* cwd, char* name, users current)
 {
-    node* file = _find_child(name,cwd);
-
     if(!name) return _INVALID_ARGUMENTS;
+    node* file = _find_child(name,cwd);
     if(!file) return _NOT_FOUND;
+
+    if(!_is_allowed(file,current))
+    {
+        return _PERMISSION_DENIED;
+    }
+
     if(file->type != _FILE) return _NOT_A_FILE;
 
     if(file->data)
@@ -358,7 +440,27 @@ int _print(node* cwd, char* name)
     return _OK;
 }
 
-int _mkdir(node* cwd, char* name)
+int _help()
+{
+    printf("ls     - List folders and files\n");
+    printf("move   - Move folders/files around\n");
+    printf("mkdir  - Create a folder\n");
+    printf("cd     - Change current folder\n");
+    printf("change - Change superuser password\n");
+    printf("rm     - Remove item");
+    printf("uprint - Print the current user status (Superuser/Casual)\n");
+    printf("switch - Switch between casual user and superuser\n");
+    printf("touch  - Create a file\n");
+    printf("clear  - Clear the screen\n");
+    printf("exit   - Exit the program\n");
+    printf("insert - Insert data into a file\n");
+    printf("print! - Print the contents of a file\n");
+    printf("help   - Show this menu\n");
+
+    return _OK;
+}
+
+int _mkdir(node* cwd, char* name, users current)
 {
     if(strlen(name) >= 32)
     {
@@ -382,20 +484,28 @@ int _mkdir(node* cwd, char* name)
         if (!((c >= 'a' && c <= 'z') ||
               (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') ||
-              c == '_' || c == '-' || c == '.'))
+               c == '_' || c == '-'  || c == '.'))
             {
                 return _ILLEGAL_CHARACTER;
             }
     }
     
     node* new_dir = _create_node(name, _DIR);
+    if(_is_allowed(cwd,_curr_usr) == false) 
+    {
+        _free_node(new_dir);
+        return _PERMISSION_DENIED;
+    }
+    if(cwd->creator == _SUPERUSER) new_dir->creator = _SUPERUSER;
+    
+    new_dir->creator = current;
     _add_child(cwd,new_dir);
     
 
     return _OK;
 }
 
-int _rm_by_path(char* path)
+int _rm_by_path(char* path,users current)
 {
     if (!path || strcmp(path, "/") == 0) 
     {
@@ -429,6 +539,12 @@ int _rm_by_path(char* path)
     {
         if (strcmp(cur->name, node_name) == 0) 
         {
+
+            if(!_is_allowed(cur,current))
+            {
+                free(parent_path);
+                return _PERMISSION_DENIED;
+            }
             if (cur == _curr_dir) 
             {
                 printf("Cannot delete current working directory!\n");
@@ -441,13 +557,14 @@ int _rm_by_path(char* path)
             else
                 parent->children = cur->sibling;
     
-            size_t delta = cur->size;
+            size_t delta = _get_size(cur);
             node* par = parent;
             while(par)
             {
                 par->size -= delta;
                 par = par->parent;
             }
+            
             _free_node(cur);
             free(parent_path);
             return _OK;
@@ -460,7 +577,7 @@ int _rm_by_path(char* path)
     return _NOT_FOUND;
 }
 
-int _rm(node* cwd, char* name,int conf)
+int _rm(node* cwd, char* name,int conf,users current)
 {
     if(!conf)
     {
@@ -482,7 +599,7 @@ int _rm(node* cwd, char* name,int conf)
     
     if (strchr(name, '/')) 
     {
-        return _rm_by_path(name);
+        return _rm_by_path(name,current);
     }
 
     
@@ -492,6 +609,10 @@ int _rm(node* cwd, char* name,int conf)
     {
         if (strcmp(cur->name, name) == 0) 
         {
+            if(!_is_allowed(cur,current))
+            {
+                return _PERMISSION_DENIED;
+            }
             if (cur == _curr_dir) 
             {
                 printf("Cannot delete current working directory!\n");
@@ -533,6 +654,9 @@ int _cd(node* cwd, char* name)
     {
         node* target=_node_from_path(name);
         if(!target) return _NOT_FOUND;
+        if(target->type != _DIR) return _NOT_A_DIRECTORY;
+        
+        if(!_is_allowed(target,_curr_usr)) return _PERMISSION_DENIED;
         _curr_dir =target;
         return _OK;
     }
@@ -554,10 +678,11 @@ int _cd(node* cwd, char* name)
     {
         if(strcmp(cur->name,name)==0)
         {
-            if(cur->type == _FILE)
+            if(cur->type != _DIR)
             {
                 return _NOT_A_DIRECTORY;
             }
+            if(!_is_allowed(cur,_curr_usr)) return _PERMISSION_DENIED;
             _curr_dir = cur;
             return _OK;
         }
@@ -567,8 +692,47 @@ int _cd(node* cwd, char* name)
     return _NOT_FOUND;
 }
 
+int _print_user()
+{
+    (_curr_usr == _CASUAL) ? printf("Casual\n") : printf("Superuser\n");
+    return _OK;
+}
+
+int _switch_users(users currentUser,char* password)
+{
+    if(currentUser == _CASUAL)
+    {
+        if(!password) return _INVALID_ARGUMENTS;
+        if(strcmp(password,_curr_pass)==0)
+        {
+            _curr_usr = _SUPERUSER;
+            return _OK;
+        }
+        else
+        {
+            return _WRONG_PASSWORD;
+        }
+    }
+    else
+    {
+        _curr_usr = _CASUAL;
+        return _OK;
+    }
+}
+
+int _change_pass(users currentUser, char* newPassword)
+{
+    if(currentUser == _CASUAL) return _PERMISSION_DENIED;
+
+    if(strlen(newPassword) >= 127) return _TOO_LONG;
+
+    strcpy(_curr_pass,newPassword);
+    printf("The password has been changed successfully!\n");
+    return _OK;
+}
+
 //command executer
-int _exec(char** splt,int i, node* cwd)
+int _exec(char** splt,int i, node* cwd, char* command)
 {
     if(strcmp(splt[0],"ls")==0)
     {
@@ -579,6 +743,32 @@ int _exec(char** splt,int i, node* cwd)
         }
         return _ls(cwd);
     }
+    else if(strcmp(splt[0], "move")==0)
+    {
+        if(i != 3) 
+        {
+            printf("Bad Usage! The right way is: move <nodePathorNameToBeMoved> <DestinationPath>\n");
+            return _INVALID_ARGUMENTS;
+        }
+
+        char* source = splt[1];
+        char* target = splt[2];
+
+        if(!source || !target || source[0] == '\0' || target[0] == '\0')
+        {
+            printf("Source or destination cannot be empty!\n");
+            return _INVALID_ARGUMENTS;
+        }
+
+        int status = _move(source,target,cwd);
+
+        if(status == _NOT_FOUND)
+            printf("File or directory couldn't be found!\n");
+        else if(status == _NOT_A_DIRECTORY)
+            printf("Destination is not a directory!\n");
+
+        return status;
+    }
     else if(strcmp(splt[0],"mkdir")==0)
     {
         if(i != 2)
@@ -586,7 +776,7 @@ int _exec(char** splt,int i, node* cwd)
             printf("Bad Usage! The right way is: mkdir dirName\n");
             return _INVALID_ARGUMENTS;
         }
-        return _mkdir(cwd,splt[1]);
+        return _mkdir(cwd,splt[1],_curr_usr);
     }
     else if(strcmp(splt[0],"cd")==0)
     {
@@ -596,6 +786,13 @@ int _exec(char** splt,int i, node* cwd)
             return _INVALID_ARGUMENTS;
         }
         return _cd(cwd,splt[1]);
+    }
+    else if(strcmp(splt[0],"change")==0)
+    {
+        if(i != 2) return _INVALID_ARGUMENTS;
+        char* newpass = splt[1];
+
+        return _change_pass(_curr_usr,newpass);
     }
     else if(strcmp(splt[0],"rm")==0)
     {
@@ -617,7 +814,25 @@ int _exec(char** splt,int i, node* cwd)
             return _INVALID_ARGUMENTS;
         }
 
-        return _rm(cwd, target_name, m);
+        return _rm(cwd, target_name, m,_curr_usr);
+    }
+    else if(strcmp(splt[0],"uprint")==0)
+    {
+        if(i!=1) return _INVALID_ARGUMENTS;
+
+        return _print_user();
+    }
+    else if(strcmp(splt[0],"switch")==0)
+    {
+        if (_curr_usr == _CASUAL)
+        {
+            if (i != 2) return _INVALID_ARGUMENTS;
+            return _switch_users(_curr_usr, splt[1]);
+        }
+        else
+        {
+            return _switch_users(_curr_usr, NULL);
+        }
     }
     else if(strcmp(splt[0],"touch")==0)
     {
@@ -626,7 +841,7 @@ int _exec(char** splt,int i, node* cwd)
             printf("Bad Usage! The right way is: touch fileName\n");
             return _INVALID_ARGUMENTS;
         }
-        return _touch(cwd,splt[1]);
+        return _touch(cwd,splt[1],_curr_usr);
     }
     else if(strcmp(splt[0],"clear")==0)
     {
@@ -639,44 +854,40 @@ int _exec(char** splt,int i, node* cwd)
         _free_node(_root);
         exit(_OK);
     }
+    else if(strcmp(splt[0], "help")==0)
+    {
+        if(i != 1) return _INVALID_ARGUMENTS;
+        return _help();
+    }
     else if(strcmp(splt[0], "insert")==0)
     {
         if(i < 4) 
         {
-            printf("Bad Usage! The right way is: insert >/>> <fileName> \"<content>\"\n");
+            printf("Bad Usage! The right way is: insert >/>> <fileName> #<content>\n");
             return _INVALID_ARGUMENTS;
         }
-        if(splt[3][0]!='"'||splt[i-1][strlen(splt[i-1])-1]!='"')
-            return _INVALID_ARGUMENTS;
         if(!splt[3]) return _INVALID_ARGUMENTS;
-        
-        char* name = splt[2];
-        char buffer[1024];
-        char* option = splt[1];
-        buffer[0] = '\0';
+        char hash = '#';
 
-        if(strlen(splt[3]) > 1022) return _TOO_LONG;
-        if(strlen(splt[3]) < 2) return _INVALID_ARGUMENTS; 
-        
-        for(int v =3; v < i; ++v)
+        if(splt[3][0] != hash)
         {
-            strncat(buffer,splt[v],sizeof(buffer)-strlen(buffer)-1);
-
-            if(v < i-1)
-            {
-                strncat(buffer," ",sizeof(buffer)-strlen(buffer)-1);
-            }
+            printf("Bad Usage! The right way is: insert >/>> <fileName> #<content>\n");
+            return _INVALID_ARGUMENTS;
         }
-        buffer[strlen(buffer)] = '\0';
+        char* option = splt[1];
+        char*  content;
+        char* name = splt[2];
+        command[strlen(command) -1] = '\0';
 
-        _remove_first_last(buffer);
-        return _insert(buffer,name,cwd,option);
+        content = _parse_command_for_insert(command);
+
+        return _insert(content,name,cwd,option,_curr_usr);
     }
     else if(strcmp(splt[0], "print!") == 0)
     {
         if(i != 2) return _INVALID_ARGUMENTS;
         char* name = splt[1];
-        return _print(cwd,name);
+        return _print(cwd,name,_curr_usr);
     }
     else
     {
@@ -693,12 +904,14 @@ int main()
 
     _curr_dir = _root;
 
-    while(1)
+    while(true)
     {
         char* abspath = _get_absolute_path(_curr_dir);
         printf("%s$", abspath);
         free(abspath);
         fgets(command,2048,stdin);
+        char q[2048];
+        strcpy(q,command);
         command[strcspn(command, "\n")] = '\0';
         char* token = strtok(command,del);
         char* splitted_code[32];
@@ -715,8 +928,7 @@ int main()
         }
         
         int argc = i;
-        int STATUS = _exec(splitted_code,argc,_curr_dir);
-        
+        int STATUS = _exec(splitted_code,argc,_curr_dir, q);
         switch (STATUS)
         {
             case _COMMAND_NOT_FOUND:
@@ -742,6 +954,12 @@ int main()
                 break;
             case _NOT_A_FILE:
                 printf("Not a file!\n");
+                break;
+            case _PERMISSION_DENIED:
+                printf("You don't have the permission to make this action!\n");
+                break;
+            case _WRONG_PASSWORD:
+                printf("Wrong password!\n");
                 break;
         }
 
